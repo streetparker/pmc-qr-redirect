@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PMC Tracking - Auftrag öffnen</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        
+        .logo {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .status {
+            color: #666;
+            margin-top: 20px;
+        }
+        
+        .error {
+            color: #e74c3c;
+            background: #ffeaea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .manual-link {
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            text-decoration: none;
+            display: inline-block;
+            margin-top: 15px;
+            font-weight: 500;
+        }
+        
+        .manual-link:hover {
+            background: #5a67d8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">PMC Tracking</div>
+        <div class="subtitle">Auftrag wird geöffnet...</div>
+        
+        <div class="spinner"></div>
+        <div class="status" id="status">Weiterleitung zu Airtable...</div>
+        
+        <div id="error-container" style="display: none;">
+            <div class="error">
+                <strong>Fehler beim Öffnen des Auftrags</strong><br>
+                <span id="error-message"></span>
+            </div>
+            <a href="#" class="manual-link" id="manual-link">Manuell zu Airtable</a>
+        </div>
+    </div>
+
+    <script>
+        // Konfiguration - DIESE WERTE ANPASSEN!
+        const CONFIG = {
+            // Deine Airtable Interface URL (ohne Record ID)
+            interfaceBaseUrl: 'https://airtable.com/appTmldyzJFevIdWz/',
+            
+            // Backup: Shared View URL
+            sharedViewUrl: 'https://airtable.com/shrCpUoLiAybaJe6Y',
+            
+            // Wie lange warten vor Fehler (Millisekunden)
+            redirectTimeout: 3000
+        };
+
+        function getRecordIdFromUrl() {
+            // Verschiedene URL-Formate unterstützen:
+            // yoursite.com/auftrag/rec123456789
+            // yoursite.com/?record=rec123456789
+            // yoursite.com/#rec123456789
+            
+            const path = window.location.pathname;
+            const search = window.location.search;
+            const hash = window.location.hash;
+            
+            // Aus Pfad extrahieren
+            const pathMatch = path.match(/\/(rec[a-zA-Z0-9]{14})/);
+            if (pathMatch) return pathMatch[1];
+            
+            // Aus Query Parameter
+            const urlParams = new URLSearchParams(search);
+            const recordParam = urlParams.get('record') || urlParams.get('id');
+            if (recordParam && recordParam.startsWith('rec')) return recordParam;
+            
+            // Aus Hash
+            const hashMatch = hash.match(/#(rec[a-zA-Z0-9]{14})/);
+            if (hashMatch) return hashMatch[1];
+            
+            return null;
+        }
+
+        function redirectToAirtable(recordId) {
+            const statusEl = document.getElementById('status');
+            
+            if (!recordId) {
+                showError('Keine Auftragsnummer gefunden', CONFIG.sharedViewUrl);
+                return;
+            }
+            
+            // Verschiedene Weiterleitungs-URLs probieren
+            const redirectUrls = [
+                // Interface URL
+                `${CONFIG.interfaceBaseUrl}${recordId}`,
+                
+                // Mobile App URL
+                `airtable://appTmldyzJFevIdWz/${recordId}`,
+                
+                // Shared View als Backup
+                CONFIG.sharedViewUrl
+            ];
+            
+            statusEl.textContent = `Öffne Auftrag ${recordId}...`;
+            
+            // Erste URL probieren
+            let currentUrlIndex = 0;
+            
+            function tryRedirect() {
+                if (currentUrlIndex >= redirectUrls.length) {
+                    showError('Konnte Auftrag nicht öffnen', CONFIG.sharedViewUrl);
+                    return;
+                }
+                
+                const url = redirectUrls[currentUrlIndex];
+                statusEl.textContent = `Weiterleitung ${currentUrlIndex + 1}/${redirectUrls.length}...`;
+                
+                // Redirect versuchen
+                window.location.href = url;
+                
+                // Nach Timeout nächste URL probieren
+                setTimeout(() => {
+                    currentUrlIndex++;
+                    tryRedirect();
+                }, CONFIG.redirectTimeout);
+            }
+            
+            tryRedirect();
+        }
+
+        function showError(message, fallbackUrl) {
+            document.querySelector('.spinner').style.display = 'none';
+            document.getElementById('status').style.display = 'none';
+            
+            const errorContainer = document.getElementById('error-container');
+            const errorMessage = document.getElementById('error-message');
+            const manualLink = document.getElementById('manual-link');
+            
+            errorMessage.textContent = message;
+            manualLink.href = fallbackUrl;
+            errorContainer.style.display = 'block';
+        }
+
+        // App starten
+        document.addEventListener('DOMContentLoaded', function() {
+            const recordId = getRecordIdFromUrl();
+            
+            // Kurz warten für bessere UX
+            setTimeout(() => {
+                redirectToAirtable(recordId);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
